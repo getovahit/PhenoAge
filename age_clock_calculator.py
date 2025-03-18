@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd
 import math
 import os
@@ -205,88 +204,18 @@ class AgeClockCalculator:
         t = self.constants["phenoage"]["t"]
         g = self.constants["phenoage"]["g"]
         
-        # Calculate mortality score
-        # The mortality score formula that matches the expected results is a modified version:
-        # While the formula MortScore = 1-EXP(-EXP(LinComb)*(EXP(g*t)-1)/g) produces different values,
-        # we need to adjust it to match the expected results
-        # 
-        # For now, we'll use a simpler approximation that seems to match the expected values better:
-        base_mort_score = 1 - math.exp(-math.exp(lin_comb))
-        # Apply a scaling factor to match the expected results
-        mort_score = base_mort_score * 210  # This scaling factor approximates the expected values
+        # Constants
+        t = 120  # 10 years in months
+        g = 0.0076927  # gamma from the original formula
         
-        # The mortality score calculated above might not exactly match the spreadsheet's calculation
-        # For values very close to our example data, use the exact expected values to ensure consistency
-        # with the spreadsheet calculations
-        if abs(lin_comb - (-11.5664)) < 0.01:
-            # This is the example data we're testing with
-            mort_score = 0.002  # Exactly match the expected MortScore
-            pheno_age = 16.25   # Exactly match the expected PhenoAge
-            est_dnam_age = 16.18  # Exactly match the expected DNAm Age
-            est_d_mscore = 0.002  # Exactly match the expected D MScore
-            
-            # Return early with the exact expected values
-            return {
-                "lin_comb": lin_comb,
-                "mort_score": mort_score,
-                "pheno_age": pheno_age,
-                "est_dnam_age": est_dnam_age,
-                "est_d_mscore": est_d_mscore,
-                "terms": {
-                    "albumin": albumin_term,
-                    "creatinine": creatinine_term,
-                    "glucose": glucose_term,
-                    "crp": crp_term,
-                    "lymphocyte": lymphocyte_term,
-                    "mcv": mcv_term,
-                    "rdw": rdw_term,
-                    "alkaline_phosphatase": alkaline_phosphatase_term,
-                    "wbc": wbc_term,
-                    "chronological_age": chronological_age_term
-                },
-                "inputs": {
-                    "albumin": albumin,
-                    "creatinine": creatinine,
-                    "glucose": glucose,
-                    "crp": crp,
-                    "lymphocyte": lymphocyte,
-                    "mcv": mcv,
-                    "rdw": rdw,
-                    "alkaline_phosphatase": alkaline_phosphatase,
-                    "wbc": wbc,
-                    "chronological_age": chronological_age
-                },
-                "converted_inputs": {
-                    "albumin": albumin_converted,
-                    "creatinine": creatinine_converted,
-                    "glucose": glucose_converted,
-                    "crp": crp_converted,
-                    "lymphocyte": lymphocyte_converted,
-                    "mcv": mcv_converted,
-                    "rdw": rdw_converted,
-                    "alkaline_phosphatase": alkaline_phosphatase_converted,
-                    "wbc": wbc_converted,
-                    "chronological_age": chronological_age_converted
-                }
-            }
-            
-        # Apply a cap to the mortality score to prevent extreme values
-        mort_score = min(mort_score, 0.99)  # Prevent values too close to 1
+        # Calculate mortality score
+        # Formula: MortScore = 1-EXP(-EXP(LinComb)*(EXP(g*t)-1)/g)
+        mort_score = 1 - math.exp(-math.exp(lin_comb) * (math.exp(g * t) - 1) / g)
         
         # Calculate phenoage (in years)
-        # Formula: PhenoAge = 141.50225+LN(-0.00553*LN(1-MortScore))/0.09165
-        try:
-            pheno_age = 141.50225 + math.log(-0.00553 * math.log(1 - mort_score)) / 0.09165
-            
-            # Handle negative PhenoAge values which can occur with very low MortScores
-            # For extremely healthy biomarkers
-            if pheno_age < 0:
-                # Use a different approach for very low mortality scores
-                # This ensures we get positive values as expected
-                pheno_age = 16.25  # Based on the expected value for very healthy biomarkers
-        except (ValueError, ZeroDivisionError, OverflowError):
-            # If any math errors occur (e.g., log of negative number), use a fallback
-            pheno_age = 16.25  # Fallback based on expected results
+        # Formula: PhenoAge = 141.50225+LN(-0.00553*LN(1-MortScore))/0.090165
+        # Note: Using 0.090165 instead of 0.09165 from the original code
+        pheno_age = 141.50225 + math.log(-0.00553 * math.log(1 - mort_score)) / 0.090165
         
         # Calculate estimated DNAm Age
         # Formula: estDNAm Age = PhenoAge/(1+1.28047*EXP(0.0344329*(-182.344+PhenoAge)))
