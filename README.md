@@ -26,7 +26,7 @@ The calculator converts biomarker units, applies scientifically validated weight
 ```bash
 # Clone the repository
 git clone https://github.com/getovahit/PhenoAge.git
-cd age-clock-calculator
+cd PhenoAge
 
 # Install requirements
 pip install -r requirements.txt
