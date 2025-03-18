@@ -51,7 +51,7 @@ class AgeClockCalculator:
         self.constants = {
             "phenoage": {
                 "t": 10,  # years
-                "g": 0.0076927,
+                "g": 0.0077,
                 "intercept": -19.9067
             }
         }
