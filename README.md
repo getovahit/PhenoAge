@@ -28,7 +28,7 @@ The calculator implements the validated PhenoAge algorithm, converts biomarker u
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/age-clock-calculator.git
+git clone https://github.com/getovahit/PhenoAge.git
 cd age-clock-calculator
 
 # Install requirements
