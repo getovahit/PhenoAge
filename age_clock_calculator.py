@@ -3,6 +3,7 @@ import math
 import os
 import sys
 import json
+import numpy as np
 
 class AgeClockCalculator:
     """
@@ -43,7 +44,7 @@ class AgeClockCalculator:
             "mcv": "fL",
             "rdw": "%",
             "alkaline_phosphatase": "U/L",
-            "wbc": "10^3 cells/mL",
+            "wbc": "10^3 cells/µL",  # Fixed unit from mL to µL
             "chronological_age": "years"
         }
         
@@ -122,7 +123,7 @@ class AgeClockCalculator:
             - mcv (fL)
             - rdw (%)
             - alkaline_phosphatase (U/L)
-            - wbc (10^3 cells/mL)
+            - wbc (10^3 cells/µL)
             - chronological_age (years)
             
         Returns:
@@ -160,12 +161,18 @@ class AgeClockCalculator:
         albumin_converted = albumin * 10  # g/dL to g/L
         creatinine_converted = creatinine * 88.4  # mg/dL to μmol/L
         glucose_converted = glucose * 0.0555  # mg/dL to mmol/L
-        crp_converted = np.log(crp * 0.1)  # mg/L to ln(mg/dL)
+        
+        # Apply CRP safeguard for log calculation
+        crp_for_calc = (crp * 0.1)  # mg/L to mg/dL
+        if crp_for_calc <= 0:  # safeguard for log calculation
+            crp_for_calc = 0.000001
+        crp_converted = np.log(crp_for_calc)
+        
         lymphocyte_converted = lymphocyte  # % stays as %
         mcv_converted = mcv  # fL stays as fL
         rdw_converted = rdw  # % stays as %
         alkaline_phosphatase_converted = alkaline_phosphatase  # U/L stays as U/L
-        wbc_converted = wbc  # 10^3 cells/mL stays as is
+        wbc_converted = wbc  # 10^3 cells/µL stays as is
         chronological_age_converted = chronological_age  # years stays as years
         
         # Weights from the PhenoAge model
@@ -200,10 +207,6 @@ class AgeClockCalculator:
             wbc_term + chronological_age_term + intercept
         )
         
-        # Get constants
-        t = self.constants["phenoage"]["t"]
-        g = self.constants["phenoage"]["g"]
-        
         # Constants
         t = 120  # 10 years in months
         g = 0.0076927  # gamma from the original formula
@@ -214,7 +217,6 @@ class AgeClockCalculator:
         
         # Calculate phenoage (in years)
         # Formula: PhenoAge = 141.50225+LN(-0.00553*LN(1-MortScore))/0.090165
-        # Note: Using 0.090165 instead of 0.09165 from the original code
         pheno_age = 141.50225 + math.log(-0.00553 * math.log(1 - mort_score)) / 0.090165
         
         # Calculate estimated DNAm Age
@@ -270,7 +272,7 @@ class AgeClockCalculator:
             }
         }
 
-        def process_direct_input(self, biomarker_data_list):
+    def process_direct_input(self, biomarker_data_list):
         """
         Process a list of biomarker data dictionaries directly (no file input).
         This method is ideal for pipeline integration.
@@ -315,6 +317,21 @@ class AgeClockCalculator:
                 results_list.append(error_row)
         
         return results_list
+
+    def read_tsv_file(self, file_path):
+        """
+        Read a TSV file and return a list of dictionaries with biomarker data.
+        
+        Parameters:
+        -----------
+        file_path : str
+            Path to the TSV file
+            
+        Returns:
+        --------
+        list of dict
+            List of dictionaries containing biomarker data
+        """
         try:
             df = pd.read_csv(file_path, sep='\t')
             
@@ -336,7 +353,7 @@ class AgeClockCalculator:
         except Exception as e:
             raise Exception(f"Error reading TSV file: {str(e)}")
 
-    def process_tsv_file(self, file_path, output_path=None, output_format='tsv'):
+    def process_tsv_file(self, file_path, output_path=None, output_format='tsv', generate_rankings=False, apply_interventions=None):
         """
         Process a TSV file and calculate age clocks for each row.
         
@@ -348,6 +365,10 @@ class AgeClockCalculator:
             Path to save the output file (default: None, returns DataFrame)
         output_format : str, optional
             Format to save the output file ('tsv', 'csv', 'excel', 'json') (default: 'tsv')
+        generate_rankings : bool, optional
+            Generate intervention rankings for each individual (default: False)
+        apply_interventions : str, optional
+            Comma-separated list of interventions to apply to each individual (default: None)
             
         Returns:
         --------
@@ -360,6 +381,79 @@ class AgeClockCalculator:
             
             # Process the biomarker data using the direct input method
             results_list = self.process_direct_input(biomarker_data_list)
+            
+            # If rankings requested, generate for each individual
+            if generate_rankings:
+                print(f"Generating intervention rankings for {len(results_list)} individuals...")
+                for i, row in enumerate(results_list):
+                    # Skip rows with errors
+                    if 'error' in row:
+                        continue
+                        
+                    # Extract biomarker data for this person
+                    biomarkers = {
+                        "albumin": row["albumin"],
+                        "creatinine": row["creatinine"],
+                        "glucose": row["glucose"],
+                        "crp": row["crp"],
+                        "lymphocyte": row["lymphocyte"],
+                        "mcv": row["mcv"],
+                        "rdw": row["rdw"],
+                        "alkaline_phosphatase": row["alkaline_phosphatase"],
+                        "wbc": row["wbc"],
+                        "chronological_age": row["chronological_age"]
+                    }
+                    
+                    # Get top 5 intervention rankings
+                    try:
+                        rankings = self.rank_interventions(biomarkers)[:5]
+                        for j, rank in enumerate(rankings):
+                            results_list[i][f"rank{j+1}_intervention"] = rank["intervention"]
+                            results_list[i][f"rank{j+1}_impact"] = -rank["delta"]  # Convert to positive number
+                    except Exception as e:
+                        results_list[i]["ranking_error"] = str(e)
+            
+            # If specific interventions should be applied
+            if apply_interventions:
+                print(f"Applying interventions to {len(results_list)} individuals...")
+                intervention_list = [i.strip() for i in apply_interventions.split(",")]
+                
+                for i, row in enumerate(results_list):
+                    # Skip rows with errors
+                    if 'error' in row:
+                        continue
+                        
+                    # Extract biomarker data for this person
+                    biomarkers = {
+                        "albumin": row["albumin"],
+                        "creatinine": row["creatinine"],
+                        "glucose": row["glucose"],
+                        "crp": row["crp"],
+                        "lymphocyte": row["lymphocyte"],
+                        "mcv": row["mcv"],
+                        "rdw": row["rdw"],
+                        "alkaline_phosphatase": row["alkaline_phosphatase"],
+                        "wbc": row["wbc"],
+                        "chronological_age": row["chronological_age"]
+                    }
+                    
+                    # Apply combined interventions
+                    try:
+                        combined = self.simulate_combined_interventions(biomarkers, intervention_list)
+                        
+                        # Add results
+                        results_list[i]["combined_pheno_age"] = combined["new_pheno_age"]
+                        results_list[i]["years_younger"] = -combined["delta"]
+                        
+                        # Add biomarker changes 
+                        for biomarker in biomarkers:
+                            if biomarkers[biomarker] != combined["updated_biomarkers"][biomarker]:
+                                old_val = biomarkers[biomarker]
+                                new_val = combined["updated_biomarkers"][biomarker]
+                                results_list[i][f"{biomarker}_new"] = new_val
+                                results_list[i][f"{biomarker}_change"] = new_val - old_val
+                    except Exception as e:
+                        results_list[i]["intervention_error"] = str(e)
             
             # Convert to DataFrame
             results_df = pd.DataFrame(results_list)
@@ -388,6 +482,844 @@ class AgeClockCalculator:
             
         except Exception as e:
             raise Exception(f"Error processing TSV file: {str(e)}")
+
+    # -------------- NEW CODE BELOW: Interventions + Ranking --------------
+
+    # UTILITY: clamp function to avoid negative or nonsensical values
+    def clamp(self, val, minv, maxv=None):
+        """
+        Utility function to clamp a value between minimum and maximum values
+        
+        Parameters:
+        -----------
+        val : float
+            Value to clamp
+        minv : float
+            Minimum allowed value
+        maxv : float, optional
+            Maximum allowed value (default: None)
+            
+        Returns:
+        --------
+        float
+            Clamped value
+        """
+        if val < minv:
+            return minv
+        if maxv is not None and val > maxv:
+            return maxv
+        return val
+
+    def apply_exercise(self, biomarkers):
+        """
+        Regular Exercise: lowers CRP significantly if CRP is high, lowers Glucose,
+        can reduce WBC if elevated, can bump lymphocyte%, etc.
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        
+        # hsCRP logic (from references: can drop CRP by ~6–8 mg/L in overweight w/ high CRP)
+        crp = new_vals["crp"]
+        if crp >= 3.0:
+            # large drop, e.g. ~3 mg/L
+            new_vals["crp"] = self.clamp(crp - 3.0, 0.01)
+        elif crp >= 1.0:
+            # moderate drop
+            new_vals["crp"] = self.clamp(crp - 1.0, 0.01)
+        else:
+            # if CRP <1, small drop
+            new_vals["crp"] = self.clamp(crp - 0.2, 0.01)
+        
+        # Glucose: ~5–15 mg/dL drop, bigger if baseline is high
+        glu = new_vals["glucose"]
+        if glu >= 130:
+            new_vals["glucose"] = self.clamp(glu - 15, 70)
+        elif glu >= 100:
+            new_vals["glucose"] = self.clamp(glu - 7, 70)
+        else:
+            new_vals["glucose"] = self.clamp(glu - 3, 70)
+        
+        # WBC: if high, reduce by 1.0
+        wbc = new_vals["wbc"]
+        if wbc >= 8.0:
+            new_vals["wbc"] = max(wbc - 1.0, 4.0)
+        
+        # Lymphocyte%: might rise a few points if it was low
+        lymph = new_vals["lymphocyte"]
+        if lymph < 30:
+            new_vals["lymphocyte"] = self.clamp(lymph + 5, 5, 60)
+        else:
+            new_vals["lymphocyte"] = lymph  # no big effect if already normal
+
+        return new_vals
+
+    def apply_weight_loss(self, biomarkers):
+        """
+        Weight Loss: ~10% body weight loss => 30–40% CRP drop, 5–20 mg/dL glucose drop, lowers WBC, etc.
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        
+        # CRP
+        crp = new_vals["crp"]
+        # If CRP is e.g. 4 mg/L => 30–40% => ~1.5 mg/L drop. We'll do piecewise:
+        if crp >= 5.0:
+            new_vals["crp"] = self.clamp(crp - 2.0, 0.01)
+        elif crp >= 2.0:
+            new_vals["crp"] = self.clamp(crp - 1.0, 0.01)
+        else:
+            new_vals["crp"] = self.clamp(crp - 0.2, 0.01)
+        
+        # Glucose
+        glu = new_vals["glucose"]
+        if glu >= 130:
+            new_vals["glucose"] = self.clamp(glu - 20, 70)
+        elif glu >= 100:
+            new_vals["glucose"] = self.clamp(glu - 10, 70)
+        else:
+            new_vals["glucose"] = self.clamp(glu - 3, 70)
+        
+        # WBC if high
+        wbc = new_vals["wbc"]
+        if wbc > 7.5:
+            new_vals["wbc"] = max(wbc - 1.0, 4.0)
+        
+        return new_vals
+
+    def apply_low_allergen_diet(self, biomarkers):
+        """
+        Low-Allergen / Anti-Inflammatory Diet:
+        CRP can drop ~0.2–0.5 mg/L if mild, more if truly inflamed.
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        crp = new_vals["crp"]
+        if crp >= 3.0:
+            new_vals["crp"] = self.clamp(crp - 1.0, 0.01)
+        elif crp >= 1.0:
+            new_vals["crp"] = self.clamp(crp - 0.5, 0.01)
+        else:
+            new_vals["crp"] = self.clamp(crp - 0.2, 0.01)
+        return new_vals
+
+    def apply_curcumin(self, biomarkers):
+        """
+        Curcumin (500–1000 mg/day):
+        Lowers CRP by ~3.7 mg/L if CRP is high, or ~0.3 mg/L if low
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        crp = new_vals["crp"]
+        if crp >= 3.0:
+            new_vals["crp"] = self.clamp(crp - 3.7, 0.01)
+        elif crp >= 1.0:
+            new_vals["crp"] = self.clamp(crp - 1.0, 0.01)
+        else:
+            # already quite low => maybe 0.2 mg/L
+            new_vals["crp"] = self.clamp(crp - 0.2, 0.01)
+        return new_vals
+
+    def apply_omega3(self, biomarkers):
+        """
+        Omega-3 (1.5–3 g/day):
+        CRP down ~2–3 mg/L if CRP is high (>=5). If CRP <1, maybe ~0.3 mg/L.
+        Also can reduce WBC if it's high. Might raise lymph% a bit.
+        Albumin can slightly rise in inflammatory states.
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        crp = new_vals["crp"]
+        if crp >= 5.0:
+            new_vals["crp"] = self.clamp(crp - 3.0, 0.01)
+        elif crp >= 1.0:
+            new_vals["crp"] = self.clamp(crp - 1.0, 0.01)
+        else:
+            new_vals["crp"] = self.clamp(crp - 0.3, 0.01)
+        
+        wbc = new_vals["wbc"]
+        if wbc >= 8.0:
+            new_vals["wbc"] = max(wbc - 0.8, 4.0)
+        
+        # If albumin <4.0 and cause is inflammation, might raise it ~0.2
+        albumin = new_vals["albumin"]
+        if albumin < 4.0:
+            new_vals["albumin"] = min(albumin + 0.2, 5.0)
+
+        # Might raise lymph% if it was low
+        lymph = new_vals["lymphocyte"]
+        if lymph < 30:
+            new_vals["lymphocyte"] = self.clamp(lymph + 3, 5, 60)
+        
+        return new_vals
+
+    def apply_taurine(self, biomarkers):
+        """
+        Taurine (3–6 g/day):
+        ~16–29% CRP drop in diabetics, let's do ~0.4 mg/L if CRP moderate.
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        crp = new_vals["crp"]
+        if crp >= 3.0:
+            new_vals["crp"] = self.clamp(crp - 1.0, 0.01)
+        elif crp >= 1.0:
+            new_vals["crp"] = self.clamp(crp - 0.4, 0.01)
+        else:
+            new_vals["crp"] = self.clamp(crp - 0.1, 0.01)
+        return new_vals
+
+    def apply_high_protein_diet(self, biomarkers):
+        """
+        High Protein Intake: raises albumin by 0.2–0.5 g/dL if albumin is low (<4.0).
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        alb = new_vals["albumin"]
+        if alb < 4.0:
+            # raise by e.g. 0.3
+            new_vals["albumin"] = min(alb + 0.3, 5.0)
+        return new_vals
+
+    def apply_reduce_alcohol(self, biomarkers):
+        """
+        Reduce Alcohol:
+        Can raise albumin if it was low, can lower ALP if it was high.
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        alb = new_vals["albumin"]
+        alp = new_vals["alkaline_phosphatase"]
+        
+        # If albumin <4 => can rebound by ~0.5
+        if alb < 4.0:
+            new_vals["albumin"] = min(alb + 0.5, 5.0)
+        
+        # If ALP >120 => can drop 20–60
+        if alp > 120:
+            new_vals["alkaline_phosphatase"] = max(alp - 40, 50)
+        elif alp > 100:
+            new_vals["alkaline_phosphatase"] = max(alp - 20, 50)
+        
+        return new_vals
+
+    def apply_stop_creatine(self, biomarkers):
+        """
+        Stop Creatine Supplementation:
+        Lowers creatinine by ~0.2–0.3 mg/dL if user was taking it.
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        creat = new_vals["creatinine"]
+        new_vals["creatinine"] = max(creat - 0.25, 0.6)
+        return new_vals
+
+    def apply_reduce_red_meat(self, biomarkers):
+        """
+        Reduce Red Meat Intake:
+        Can lower creatinine by ~0.1–0.4 mg/dL
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        creat = new_vals["creatinine"]
+        # if quite high => bigger drop
+        if creat >= 1.2:
+            new_vals["creatinine"] = max(creat - 0.3, 0.6)
+        else:
+            new_vals["creatinine"] = max(creat - 0.1, 0.6)
+        return new_vals
+
+    def apply_reduce_sodium(self, biomarkers):
+        """
+        Reduce Sodium:
+        Might improve creatinine by 0.1–0.2 mg/dL in borderline CKD
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        creat = new_vals["creatinine"]
+        if creat >= 1.2:
+            new_vals["creatinine"] = max(creat - 0.2, 0.6)
+        else:
+            new_vals["creatinine"] = max(creat - 0.1, 0.6)
+        return new_vals
+
+    def apply_avoid_nsaids(self, biomarkers):
+        """
+        Avoid NSAIDs:
+        Can reduce creatinine by ~0.1–0.3 mg/dL if it was elevated from NSAIDs.
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        creat = new_vals["creatinine"]
+        new_vals["creatinine"] = max(creat - 0.2, 0.6)
+        return new_vals
+
+    def apply_avoid_heavy_exercise(self, biomarkers):
+        """
+        Avoid Very Heavy Exercise Before Testing:
+        May lower ALP by ~10–15% if it was elevated from bone isoenzyme.
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        alp = new_vals["alkaline_phosphatase"]
+        # If ALP > 100 => drop ~15%
+        if alp > 100:
+            new_vals["alkaline_phosphatase"] = max(alp * 0.85, 50)
+        else:
+            # small drop
+            new_vals["alkaline_phosphatase"] = max(alp - 5, 30)
+        return new_vals
+
+    def apply_milk_thistle(self, biomarkers):
+        """
+        Milk Thistle (1 g/day):
+        Reduces ALP by 20–40 U/L if elevated.
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        alp = new_vals["alkaline_phosphatase"]
+        if alp >= 130:
+            new_vals["alkaline_phosphatase"] = max(alp - 30, 50)
+        elif alp >= 100:
+            new_vals["alkaline_phosphatase"] = max(alp - 20, 50)
+        return new_vals
+
+    def apply_nac(self, biomarkers):
+        """
+        NAC (1–2 g/day):
+        Might lower ALP by 5–15% if elevated.
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        alp = new_vals["alkaline_phosphatase"]
+        if alp >= 120:
+            new_vals["alkaline_phosphatase"] = max(alp * 0.85, 50)
+        elif alp >= 100:
+            new_vals["alkaline_phosphatase"] = max(alp * 0.90, 50)
+        return new_vals
+
+    def apply_carb_fat_restriction(self, biomarkers):
+        """
+        Carb & Fat Restriction => 5–20 mg/dL glucose reduction if baseline is high
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        glu = new_vals["glucose"]
+        if glu >= 130:
+            new_vals["glucose"] = self.clamp(glu - 15, 70)
+        elif glu >= 100:
+            new_vals["glucose"] = self.clamp(glu - 10, 70)
+        else:
+            new_vals["glucose"] = self.clamp(glu - 3, 70)
+        return new_vals
+
+    def apply_postmeal_walk(self, biomarkers):
+        """
+        Walking After Meals => small effect on fasting glucose (maybe 2–5 mg/dL)
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        glu = new_vals["glucose"]
+        if glu > 100:
+            new_vals["glucose"] = self.clamp(glu - 5, 70)
+        else:
+            new_vals["glucose"] = self.clamp(glu - 2, 70)
+        return new_vals
+
+    def apply_sauna(self, biomarkers):
+        """
+        Sauna => mild lowering of glucose (2–5 mg/dL), 
+                 raises WBC & lymphocyte% short term, can help if low
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        # Glucose
+        glu = new_vals["glucose"]
+        new_vals["glucose"] = self.clamp(glu - 4, 70)
+
+        # WBC: if low, might raise; if normal/high, no big change
+        wbc = new_vals["wbc"]
+        if wbc < 4.0:
+            new_vals["wbc"] = wbc + 0.5  # mild bump
+        # Lymphocyte: if <30, might raise it
+        lymph = new_vals["lymphocyte"]
+        if lymph < 30:
+            new_vals["lymphocyte"] = self.clamp(lymph + 5, 5, 60)
+        return new_vals
+
+    def apply_berberine(self, biomarkers):
+        """
+        Berberine (500–1000 mg/day):
+        Lowers glucose by ~10–20 mg/dL if diabetic, smaller if borderline
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        glu = new_vals["glucose"]
+        if glu >= 130:
+            new_vals["glucose"] = self.clamp(glu - 15, 70)
+        elif glu >= 100:
+            new_vals["glucose"] = self.clamp(glu - 10, 70)
+        else:
+            new_vals["glucose"] = self.clamp(glu - 3, 70)
+        return new_vals
+
+    def apply_vitb1(self, biomarkers):
+        """
+        Vitamin B1 (Thiamine ~100 mg/day):
+        If user is borderline high glucose, might drop ~5 mg/dL
+        If truly high, maybe 10 mg/dL
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        glu = new_vals["glucose"]
+        if glu >= 130:
+            new_vals["glucose"] = self.clamp(glu - 10, 70)
+        elif glu >= 100:
+            new_vals["glucose"] = self.clamp(glu - 5, 70)
+        return new_vals
+
+    def apply_olive_oil(self, biomarkers):
+        """
+        Olive Oil (Mediterranean):
+        Slightly lowers neutrophils => raises lymph% a bit if was low
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        lymph = new_vals["lymphocyte"]
+        if lymph < 35:
+            new_vals["lymphocyte"] = self.clamp(lymph + 3, 5, 60)
+        return new_vals
+
+    def apply_mushrooms(self, biomarkers):
+        """
+        Mushrooms: can raise lymphocyte% by up to ~5–10 points if low
+        Also can raise WBC if low.
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        lymph = new_vals["lymphocyte"]
+        if lymph < 35:
+            new_vals["lymphocyte"] = self.clamp(lymph + 7, 5, 60)
+        
+        wbc = new_vals["wbc"]
+        if wbc < 4.0:
+            new_vals["wbc"] = wbc + 0.8
+        return new_vals
+
+    def apply_zinc(self, biomarkers):
+        """
+        Zinc: If user has low lymphocytes or WBC, can raise them somewhat
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        wbc = new_vals["wbc"]
+        if wbc < 4.0:
+            new_vals["wbc"] = wbc + 0.5
+        
+        lymph = new_vals["lymphocyte"]
+        if lymph < 30:
+            new_vals["lymphocyte"] = self.clamp(lymph + 5, 5, 60)
+        return new_vals
+
+    def apply_bcomplex(self, biomarkers):
+        """
+        B-Complex: can fix elevated RDW from B12/folate deficiency,
+        and can fix high MCV if macrocytic.
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        rdw = new_vals["rdw"]
+        if rdw >= 18.0:
+            # big drop to normal
+            new_vals["rdw"] = 14.0
+        elif rdw >= 15.0:
+            new_vals["rdw"] = 13.5
+        
+        mcv = new_vals["mcv"]
+        if mcv >= 100:
+            new_vals["mcv"] = max(mcv - 10, 80)  # drop ~10 fL
+        return new_vals
+
+    def apply_balanced_diet(self, biomarkers):
+        """
+        Well-Balanced Diet: helps albumin if malnourished, helps MCV if micro/macro,
+        small CRP improvement, etc.
+        
+        Parameters:
+        -----------
+        biomarkers : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        dict
+            Updated biomarkers after intervention
+        """
+        new_vals = biomarkers.copy()
+        # albumin
+        alb = new_vals["albumin"]
+        if alb < 4.0:
+            new_vals["albumin"] = min(alb + 0.5, 5.0)
+        
+        # MCV: if out of range, nudge toward normal
+        mcv = new_vals["mcv"]
+        if mcv < 80:
+            new_vals["mcv"] = min(mcv + 5, 80)
+        elif mcv > 100:
+            new_vals["mcv"] = max(mcv - 5, 100)
+        
+        # CRP small improvement
+        crp = new_vals["crp"]
+        new_vals["crp"] = self.clamp(crp - 0.3, 0.01)
+        
+        return new_vals
+
+    def get_interventions(self):
+        """
+        Return a list of interventions and the corresponding apply functions
+        
+        Returns:
+        --------
+        list
+            List of dictionaries containing intervention names and their apply functions
+        """
+        return [
+            {"name": "Regular Exercise", "apply_fn": self.apply_exercise},
+            {"name": "Weight Loss", "apply_fn": self.apply_weight_loss},
+            {"name": "Low Allergen Diet", "apply_fn": self.apply_low_allergen_diet},
+            {"name": "Curcumin (500 mg/day)", "apply_fn": self.apply_curcumin},
+            {"name": "Omega-3 (1.5–3 g/day)", "apply_fn": self.apply_omega3},
+            {"name": "Taurine (3–6 g/day)", "apply_fn": self.apply_taurine},
+            {"name": "High Protein Intake", "apply_fn": self.apply_high_protein_diet},
+            {"name": "Well-Balanced Diet", "apply_fn": self.apply_balanced_diet},
+            {"name": "Reduce Alcohol", "apply_fn": self.apply_reduce_alcohol},
+            {"name": "Stop Creatine Supplementation", "apply_fn": self.apply_stop_creatine},
+            {"name": "Reduce Red Meat Intake", "apply_fn": self.apply_reduce_red_meat},
+            {"name": "Reduce Sodium", "apply_fn": self.apply_reduce_sodium},
+            {"name": "Avoid NSAIDs", "apply_fn": self.apply_avoid_nsaids},
+            {"name": "Avoid Very Heavy Exercise", "apply_fn": self.apply_avoid_heavy_exercise},
+            {"name": "Milk Thistle (1 g/day)", "apply_fn": self.apply_milk_thistle},
+            {"name": "NAC (1–2 g/day)", "apply_fn": self.apply_nac},
+            {"name": "Carb & Fat Restriction", "apply_fn": self.apply_carb_fat_restriction},
+            {"name": "Walking After Meals", "apply_fn": self.apply_postmeal_walk},
+            {"name": "Sauna", "apply_fn": self.apply_sauna},
+            {"name": "Berberine (500–1000 mg/day)", "apply_fn": self.apply_berberine},
+            {"name": "Vitamin B1 (100 mg/day)", "apply_fn": self.apply_vitb1},
+            {"name": "Olive Oil (Med Diet)", "apply_fn": self.apply_olive_oil},
+            {"name": "Mushrooms (Beta-Glucans)", "apply_fn": self.apply_mushrooms},
+            {"name": "Zinc Supplementation", "apply_fn": self.apply_zinc},
+            {"name": "B-Complex (B12/Folate)", "apply_fn": self.apply_bcomplex}
+        ]
+    
+    def rank_interventions(self, biomarker_data):
+        """
+        For the user's current biomarkers, apply each intervention individually,
+        recalculate PhenoAge, and see the difference. Sort by the biggest improvement.
+        
+        Parameters:
+        -----------
+        biomarker_data : dict
+            Dictionary of biomarker values
+            
+        Returns:
+        --------
+        list
+            List of dictionaries containing interventions and their impact on PhenoAge,
+            sorted by the amount of improvement (biggest improvement first)
+        """
+        # 1) Calculate baseline
+        base_result = self.calculate_phenoage(biomarker_data)
+        base_pheno = base_result["pheno_age"]
+        
+        # 2) Test each intervention
+        ranking = []
+        for item in self.get_interventions():
+            name = item["name"]
+            fn = item["apply_fn"]
+            
+            # copy biomarkers
+            updated = dict(biomarker_data)
+            # apply
+            updated = fn(updated)
+            
+            # recalc pheno
+            new_res = self.calculate_phenoage(updated)
+            new_pheno = new_res["pheno_age"]
+            delta = new_pheno - base_pheno
+            ranking.append({
+                "intervention": name,
+                "base_pheno_age": base_pheno,
+                "new_pheno_age": new_pheno,
+                "delta": delta
+            })
+        
+        # 3) Sort ascending by delta (lowest final => best improvement)
+        ranking.sort(key=lambda x: x["delta"])
+        return ranking
+    
+    def simulate_combined_interventions(self, biomarker_data, interventions):
+        """
+        Simulate the effect of applying multiple interventions together.
+        
+        Parameters:
+        -----------
+        biomarker_data : dict
+            Dictionary of biomarker values
+        interventions : list
+            List of intervention names to apply
+            
+        Returns:
+        --------
+        dict
+            Dictionary containing original biomarkers, updated biomarkers,
+            original PhenoAge, new PhenoAge, and the delta
+        """
+        # Get mapping of intervention names to functions
+        intervention_map = {item["name"]: item["apply_fn"] for item in self.get_interventions()}
+        
+        # Calculate baseline
+        base_result = self.calculate_phenoage(biomarker_data)
+        base_pheno = base_result["pheno_age"]
+        
+        # Apply each intervention in sequence
+        updated = dict(biomarker_data)
+        applied_interventions = []
+        
+        for intervention_name in interventions:
+            if intervention_name in intervention_map:
+                fn = intervention_map[intervention_name]
+                updated = fn(updated)
+                applied_interventions.append(intervention_name)
+            else:
+                raise ValueError(f"Unknown intervention: {intervention_name}")
+        
+        # Calculate new PhenoAge
+        new_res = self.calculate_phenoage(updated)
+        new_pheno = new_res["pheno_age"]
+        
+        return {
+            "original_biomarkers": biomarker_data,
+            "updated_biomarkers": updated,
+            "original_pheno_age": base_pheno,
+            "new_pheno_age": new_pheno,
+            "delta": new_pheno - base_pheno,
+            "applied_interventions": applied_interventions
+        }
 
 
 def create_example_tsv():
@@ -439,7 +1371,7 @@ def create_example_tsv():
     print("  * MCV (fL)")
     print("  * RDW (%)")
     print("  * Alkaline_Phosphatase (U/L)")
-    print("  * WBC (10^3 cells/mL)")
+    print(f"  * WBC (10^3 cells/µL)")  # Updated unit
     print("  * Chronological_Age (years)")
     print("- Additional metadata columns are optional")
 
@@ -460,6 +1392,10 @@ if __name__ == "__main__":
     process_parser.add_argument("--output", "-o", help="Path to output file")
     process_parser.add_argument("--format", "-f", choices=["tsv", "csv", "excel", "json"], default="tsv",
                               help="Output file format (default: tsv)")
+    process_parser.add_argument("--rank", "-r", action="store_true", 
+                             help="Generate intervention rankings for each individual")
+    process_parser.add_argument("--apply", "-a", 
+                             help="Comma-separated list of interventions to apply to each individual")
     
     # Calculate single set of biomarkers
     calc_parser = subparsers.add_parser("calculate", help="Calculate age clocks for a single set of biomarkers")
@@ -471,8 +1407,35 @@ if __name__ == "__main__":
     calc_parser.add_argument("--mcv", type=float, required=True, help="MCV (fL)")
     calc_parser.add_argument("--rdw", type=float, required=True, help="RDW (%)")
     calc_parser.add_argument("--alp", type=float, required=True, help="Alkaline Phosphatase (U/L)")
-    calc_parser.add_argument("--wbc", type=float, required=True, help="WBC (10^3 cells/mL)")
+    calc_parser.add_argument("--wbc", type=float, required=True, help="WBC (10^3 cells/µL)")  # Updated unit
     calc_parser.add_argument("--age", type=float, required=True, help="Chronological Age (years)")
+    
+    # Rank interventions
+    rank_parser = subparsers.add_parser("rank", help="Rank interventions by their impact on PhenoAge")
+    rank_parser.add_argument("--albumin", type=float, required=True, help="Albumin (g/dL)")
+    rank_parser.add_argument("--creatinine", type=float, required=True, help="Creatinine (mg/dL)")
+    rank_parser.add_argument("--glucose", type=float, required=True, help="Glucose (mg/dL)")
+    rank_parser.add_argument("--crp", type=float, required=True, help="CRP (mg/L)")
+    rank_parser.add_argument("--lymphocyte", type=float, required=True, help="Lymphocyte (%)")
+    rank_parser.add_argument("--mcv", type=float, required=True, help="MCV (fL)")
+    rank_parser.add_argument("--rdw", type=float, required=True, help="RDW (%)")
+    rank_parser.add_argument("--alp", type=float, required=True, help="Alkaline Phosphatase (U/L)")
+    rank_parser.add_argument("--wbc", type=float, required=True, help="WBC (10^3 cells/µL)")  # Updated unit
+    rank_parser.add_argument("--age", type=float, required=True, help="Chronological Age (years)")
+    
+    # Simulate combined interventions
+    combine_parser = subparsers.add_parser("combine", help="Simulate combined effects of multiple interventions")
+    combine_parser.add_argument("--albumin", type=float, required=True, help="Albumin (g/dL)")
+    combine_parser.add_argument("--creatinine", type=float, required=True, help="Creatinine (mg/dL)")
+    combine_parser.add_argument("--glucose", type=float, required=True, help="Glucose (mg/dL)")
+    combine_parser.add_argument("--crp", type=float, required=True, help="CRP (mg/L)")
+    combine_parser.add_argument("--lymphocyte", type=float, required=True, help="Lymphocyte (%)")
+    combine_parser.add_argument("--mcv", type=float, required=True, help="MCV (fL)")
+    combine_parser.add_argument("--rdw", type=float, required=True, help="RDW (%)")
+    combine_parser.add_argument("--alp", type=float, required=True, help="Alkaline Phosphatase (U/L)")
+    combine_parser.add_argument("--wbc", type=float, required=True, help="WBC (10^3 cells/µL)")  # Updated unit
+    combine_parser.add_argument("--age", type=float, required=True, help="Chronological Age (years)")
+    combine_parser.add_argument("--interventions", required=True, help="Comma-separated list of intervention names")
     
     args = parser.parse_args()
     
@@ -484,11 +1447,27 @@ if __name__ == "__main__":
         
     elif args.command == "process":
         try:
-            results = calculator.process_tsv_file(args.input_file, args.output, args.format)
+            results = calculator.process_tsv_file(
+                args.input_file, 
+                args.output, 
+                args.format,
+                generate_rankings=args.rank,
+                apply_interventions=args.apply
+            )
             if not args.output:
                 print(results.to_string())
             else:
                 print(f"Results saved to {args.output}")
+                
+                # Print summary of what was done
+                print(f"Processed {len(results)} individuals")
+                if args.rank:
+                    print("Generated personalized intervention rankings for each individual")
+                if args.apply:
+                    interventions = args.apply.split(",")
+                    print(f"Applied {len(interventions)} interventions to each individual:")
+                    for intervention in interventions:
+                        print(f"  - {intervention.strip()}")
         except Exception as e:
             print(f"Error: {str(e)}")
             sys.exit(1)
@@ -519,46 +1498,81 @@ if __name__ == "__main__":
             print(f"  Estimated DNAm Age: {results['phenoage_est_dnam_age']:.4f} years")
             print(f"  Estimated D MScore: {results['phenoage_est_d_mscore']:.4f}")
             
-            # Provide examples of how to use in a production pipeline
-            print("\nProduction Pipeline Usage Examples:")
-            print("1. Python Integration:")
-            print("```python")
-            print("from age_clock_calculator import AgeClockCalculator")
-            print("")
-            print("# Initialize the calculator")
-            print("calculator = AgeClockCalculator()")
-            print("")
-            print("# Single subject")
-            print("biomarker_data = {")
-            print('    "albumin": 4.7,')
-            print('    "creatinine": 0.8,')
-            print('    "glucose": 75.9,')
-            print('    "crp": 0.1,')
-            print('    "lymphocyte": 57.5,')
-            print('    "mcv": 92.9,')
-            print('    "rdw": 13.3,')
-            print('    "alkaline_phosphatase": 15,')
-            print('    "wbc": 4.1,')
-            print('    "chronological_age": 30')
-            print("}")
-            print("results = calculator.process_direct_input(biomarker_data)[0]")
-            print("pheno_age = results['phenoage_pheno_age']")
-            print("")
-            print("# Multiple subjects")
-            print("biomarker_data_list = [")
-            print("    {\"albumin\": 4.7, \"creatinine\": 0.8, ...},")
-            print("    {\"albumin\": 4.47, \"creatinine\": 1.17, ...}")
-            print("]")
-            print("results_list = calculator.process_direct_input(biomarker_data_list)")
-            print("```")
+        except Exception as e:
+            print(f"Error: {str(e)}")
+            sys.exit(1)
+    
+    elif args.command == "rank":
+        try:
+            biomarker_data = {
+                "albumin": args.albumin,
+                "creatinine": args.creatinine,
+                "glucose": args.glucose,
+                "crp": args.crp,
+                "lymphocyte": args.lymphocyte,
+                "mcv": args.mcv,
+                "rdw": args.rdw,
+                "alkaline_phosphatase": args.alp,
+                "wbc": args.wbc,
+                "chronological_age": args.age
+            }
             
+            # Rank interventions
+            ranking = calculator.rank_interventions(biomarker_data)
+            base_pheno = calculator.calculate_phenoage(biomarker_data)["pheno_age"]
+            
+            print(f"\nBaseline PhenoAge: {base_pheno:.2f} years")
+            print("Interventions ranked by improvement (best first):\n")
+            for r in ranking:
+                print(f"- {r['intervention']}: new PhenoAge = {r['new_pheno_age']:.2f} years "
+                      f"(delta={r['delta']:.2f} years)")
+        
+        except Exception as e:
+            print(f"Error: {str(e)}")
+            sys.exit(1)
+    
+    elif args.command == "combine":
+        try:
+            biomarker_data = {
+                "albumin": args.albumin,
+                "creatinine": args.creatinine,
+                "glucose": args.glucose,
+                "crp": args.crp,
+                "lymphocyte": args.lymphocyte,
+                "mcv": args.mcv,
+                "rdw": args.rdw,
+                "alkaline_phosphatase": args.alp,
+                "wbc": args.wbc,
+                "chronological_age": args.age
+            }
+            
+            interventions = [i.strip() for i in args.interventions.split(",")]
+            
+            # Simulate combined interventions
+            result = calculator.simulate_combined_interventions(biomarker_data, interventions)
+            
+            print("\nCombined Intervention Simulation:")
+            print(f"Original PhenoAge: {result['original_pheno_age']:.2f} years")
+            print(f"New PhenoAge: {result['new_pheno_age']:.2f} years")
+            print(f"Improvement: {-result['delta']:.2f} years")
+            print("\nInterventions applied:")
+            for i, intervention in enumerate(result['applied_interventions'], 1):
+                print(f"  {i}. {intervention}")
+            
+            print("\nBiomarker Changes:")
+            for biomarker in sorted(result['original_biomarkers'].keys()):
+                orig = result['original_biomarkers'][biomarker]
+                new = result['updated_biomarkers'][biomarker]
+                if orig != new:
+                    print(f"  {biomarker}: {orig:.2f} → {new:.2f}")
+        
         except Exception as e:
             print(f"Error: {str(e)}")
             sys.exit(1)
     
     else:
-        # Print examples of both file processing and direct input usage
-        print("Age Clock Calculator")
+        # Print examples of usage
+        print("Age Clock Calculator - Extended with Intervention Ranking")
         print("\nExamples:")
         print("1. Create example TSV file:")
         print("   python age_clock_calculator.py create-example")
@@ -569,28 +1583,9 @@ if __name__ == "__main__":
         print("3. Calculate for a single set of biomarkers:")
         print("   python age_clock_calculator.py calculate --albumin 4.7 --creatinine 0.8 --glucose 75.9 --crp 0.1 --lymphocyte 57.5 --mcv 92.9 --rdw 13.3 --alp 15 --wbc 4.1 --age 30")
         print("")
-        print("4. Python Integration (for production pipelines):")
-        print("```python")
-        print("from age_clock_calculator import AgeClockCalculator")
+        print("4. Rank interventions by impact on PhenoAge:")
+        print("   python age_clock_calculator.py rank --albumin 4.7 --creatinine 0.8 --glucose 75.9 --crp 0.1 --lymphocyte 57.5 --mcv 92.9 --rdw 13.3 --alp 15 --wbc 4.1 --age 30")
         print("")
-        print("# Initialize the calculator")
-        print("calculator = AgeClockCalculator()")
-        print("")
-        print("# Process a single subject")
-        print("biomarker_data = {")
-        print('    "albumin": 4.7,')
-        print('    "creatinine": 0.8,')
-        print('    "glucose": 75.9,')
-        print('    "crp": 0.1,')
-        print('    "lymphocyte": 57.5,')
-        print('    "mcv": 92.9,')
-        print('    "rdw": 13.3,')
-        print('    "alkaline_phosphatase": 15,')
-        print('    "wbc": 4.1,')
-        print('    "chronological_age": 30')
-        print("}")
-        print("results = calculator.process_direct_input(biomarker_data)[0]")
-        print("pheno_age = results['phenoage_pheno_age']")
-        print("```")
-        
+        print("5. Simulate combined interventions:")
+        print('   python age_clock_calculator.py combine --albumin 4.7 --creatinine 0.8 --glucose 75.9 --crp 0.1 --lymphocyte 57.5 --mcv 92.9 --rdw 13.3 --alp 15 --wbc 4.1 --age 30 --interventions "Regular Exercise,Omega-3 (1.5–3 g/day)"')
         parser.print_help()
