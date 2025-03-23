@@ -1,38 +1,28 @@
-# Age Clock Calculator with Intervention Ranking
+# PhenoAge Toolkit
 
-A comprehensive Python toolkit for calculating biological age clocks based on biomarker data and simulating the effects of lifestyle and supplementation interventions. Currently supports PhenoAge calculation with ranking of 25 evidence-based interventions.
+A comprehensive Python toolkit for calculating biological age based on biomarkers, determining percentile rankings compared to age peers, and simulating the effects of lifestyle and supplement interventions.
 
 ## Overview
 
-The Age Clock Calculator provides a powerful and flexible way to:
+The PhenoAge Toolkit provides a modular approach to:
 
-1. Calculate biological age based on standard clinical biomarkers
-2. Rank personalized interventions by their potential to reduce biological age
-3. Simulate the combined effects of multiple interventions
-4. Process both individual biomarker sets and large datasets
+1. Calculate phenotypic age (biological age) from standard clinical biomarkers
+2. Determine percentile rankings compared to chronological age peers
+3. Rank personalized interventions by their potential to reduce biological age
+4. Simulate the combined effects of multiple interventions
+5. Quantify before/after improvements in both absolute years and percentile rankings
 
-The calculator implements the validated PhenoAge algorithm, converts biomarker units, applies scientifically validated weights, and computes age-related metrics. Additionally, it models the effects of 25 different interventions based on clinical literature.
-
-## Features
-
-- **PhenoAge Calculation**: Implements the Levine et al. method for phenotypic age estimation
-- **Intervention Ranking**: Ranks 25 different interventions by their impact on reducing biological age
-- **Intervention Simulation**: Simulates the effects of combining multiple interventions
-- **Batch Processing**: Efficiently processes large datasets with thousands of individuals
-- **Multiple Output Formats**: Results available as TSV, CSV, Excel, JSON, or Python objects
-- **Biomarker Name Aliases**: Recognizes different naming conventions for the same biomarker
-- **Error Handling**: Provides informative errors about missing or invalid biomarkers
-- **Well-Documented API**: Clear documentation for all methods and parameters
+The toolkit implements the validated PhenoAge algorithm (Levine et al.), converts biomarker units, applies scientifically validated weights, and computes age-related metrics. Additionally, it models the effects of 25 different interventions based on clinical literature.
 
 ## Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/getovahit/PhenoAge.git
-cd PhenoAge
+git clone https://github.com/yourusername/phenoage-toolkit.git
+cd phenoage-toolkit
 
-# Install requirements
-pip install -r requirements.txt
+# Install the package
+pip install .
 ```
 
 ## Required Biomarkers
@@ -52,66 +42,19 @@ The following biomarkers are required for PhenoAge calculation:
 | WBC                   | 10^3 cells/µL     | White blood cell count         |
 | Chronological Age     | years             | Patient's chronological age    |
 
-## Command-Line Usage
+## Usage
 
-### Calculate for a Single Set of Biomarkers
+### Python API
 
-```bash
-python age_clock_calculator.py calculate --albumin 4.7 --creatinine 0.8 --glucose 75.9 --crp 0.1 --lymphocyte 57.5 --mcv 92.9 --rdw 13.3 --alp 15 --wbc 4.1 --age 30
-```
-
-### Rank Interventions for an Individual
-
-```bash
-python age_clock_calculator.py rank --albumin 4.7 --creatinine 0.8 --glucose 75.9 --crp 0.1 --lymphocyte 57.5 --mcv 92.9 --rdw 13.3 --alp 15 --wbc 4.1 --age 30
-```
-
-### Simulate Combined Interventions
-
-```bash
-python age_clock_calculator.py combine --albumin 4.7 --creatinine 0.8 --glucose 75.9 --crp 0.1 --lymphocyte 57.5 --mcv 92.9 --rdw 13.3 --alp 15 --wbc 4.1 --age 30 --interventions "Regular Exercise,Omega-3 (1.5–3 g/day)"
-```
-
-### Process a TSV File (Basic)
-
-```bash
-python age_clock_calculator.py process example_biomarkers.tsv --output results.tsv
-```
-
-### Process a TSV File with Intervention Rankings
-
-```bash
-python age_clock_calculator.py process example_biomarkers.tsv --output results_with_rankings.tsv --rank
-```
-
-### Process a TSV File with Specific Interventions
-
-```bash
-python age_clock_calculator.py process example_biomarkers.tsv --output intervention_results.tsv --apply "Regular Exercise,Omega-3 (1.5–3 g/day)"
-```
-
-### Process a TSV File with Both Rankings and Interventions
-
-```bash
-python age_clock_calculator.py process example_biomarkers.tsv --output full_results.tsv --rank --apply "Regular Exercise,Omega-3 (1.5–3 g/day)"
-```
-
-### Create Example Data
-
-```bash
-python age_clock_calculator.py create-example
-```
-
-## Python API
-
-### Calculate PhenoAge
+#### Basic Usage
 
 ```python
-from age_clock_calculator import AgeClockCalculator
+from phenoage_toolkit import PhenoAgeAPI
 
-calculator = AgeClockCalculator()
+# Initialize the API
+api = PhenoAgeAPI()
 
-# Single subject
+# Prepare biomarker data
 biomarker_data = {
     "albumin": 4.7,                 # g/dL
     "creatinine": 0.8,              # mg/dL
@@ -125,137 +68,135 @@ biomarker_data = {
     "chronological_age": 30         # years
 }
 
-# Calculate PhenoAge
-results = calculator.process_direct_input(biomarker_data)[0]
+# Get complete assessment
+assessment = api.get_complete_assessment(biomarker_data)
 
 # Access results
-print(f"PhenoAge: {results['phenoage_pheno_age']:.2f} years")
-print(f"DNAm Age: {results['phenoage_est_dnam_age']:.2f} years")
-print(f"Mortality Score: {results['phenoage_mort_score']:.4f}")
+print(f"Chronological Age: {assessment['chronological_age']} years")
+print(f"Phenotypic Age: {assessment['phenotypic_age']:.2f} years")
+print(f"Percentile Rank: {assessment['percentile']:.2f}")
+print(f"Interpretation: {assessment['interpretation']}")
+
+# View top intervention recommendations
+print("\nTop 3 Recommended Interventions:")
+for i, rec in enumerate(assessment['intervention_rankings'][:3], 1):
+    print(f"{i}. {rec['intervention']}: {-rec['delta']:.2f} years improvement")
 ```
 
-### Rank Interventions
+#### Simulating Interventions
 
 ```python
-# Rank interventions for this individual
-rankings = calculator.rank_interventions(biomarker_data)
-
-# Print top 5 interventions
-print("\nTop 5 recommended interventions:")
-for i, rank in enumerate(rankings[:5]):
-    print(f"{i+1}. {rank['intervention']}: reduces biological age by {-rank['delta']:.2f} years")
-```
-
-### Simulate Combined Interventions
-
-```python
-# Simulate combined effects of multiple interventions
-interventions = ["Regular Exercise", "Omega-3 (1.5–3 g/day)", "Berberine (500–1000 mg/day)"]
-combined = calculator.simulate_combined_interventions(biomarker_data, interventions)
-
-# Print results
-print(f"\nOriginal PhenoAge: {combined['original_pheno_age']:.2f} years")
-print(f"New PhenoAge: {combined['new_pheno_age']:.2f} years")
-print(f"Improvement: {-combined['delta']:.2f} years")
-```
-
-### Process Multiple Subjects
-
-```python
-# Multiple subjects
-biomarker_data_list = [
-    {"albumin": 4.7, "creatinine": 0.8, ...},
-    {"albumin": 4.47, "creatinine": 1.17, ...}
+# Select interventions based on recommendations or user preference
+selected_interventions = [
+    "Regular Exercise",
+    "Omega-3 (1.5–3 g/day)",
+    "Curcumin (500 mg/day)"
 ]
 
-results_list = calculator.process_direct_input(biomarker_data_list)
-for i, result in enumerate(results_list):
-    print(f"Subject {i+1} PhenoAge: {result['phenoage_pheno_age']:.2f} years")
+# Simulate the combined effect of these interventions
+simulation = api.simulate_interventions(biomarker_data, selected_interventions)
+
+# View results
+print(f"Original PhenoAge: {simulation['original_pheno_age']:.2f} years")
+print(f"New PhenoAge: {simulation['new_pheno_age']:.2f} years")
+print(f"Improvement: {-simulation['delta']:.2f} years")
+print(f"Original Percentile: {simulation['original_percentile']:.2f}")
+print(f"New Percentile: {simulation['new_percentile']:.2f}")
+print(f"Percentile Improvement: {simulation['percentile_change']:.2f}")
+
+# View biomarker changes
+print("\nBiomarker Changes:")
+for change in simulation['biomarker_changes']:
+    print(f"{change['biomarker']}: {change['original_value']:.2f} → {change['new_value']:.2f}")
 ```
 
-## Mathematical Details
+### Command Line Interface
 
-### PhenoAge Calculation
+#### Complete Assessment
 
-The PhenoAge calculation follows these steps:
+```bash
+phenoage assess --albumin 4.7 --creatinine 0.8 --glucose 75.9 --crp 0.1 \
+  --lymphocyte 57.5 --mcv 92.9 --rdw 13.3 --alp 15 --wbc 4.1 --age 30
+```
 
-1. **Unit Conversion**:
-   - Albumin: g/dL → g/L (multiply by 10)
-   - Creatinine: mg/dL → μmol/L (multiply by 88.4)
-   - Glucose: mg/dL → mmol/L (multiply by 0.0555)
-   - CRP: mg/L → ln(mg/dL) (multiply by 0.1 then take natural log)
-   
-2. **Apply Weights (from Levine et al. 2018)**:
-   - Albumin: -0.0336
-   - Creatinine: 0.0095
-   - Glucose: 0.1953
-   - CRP: 0.0954
-   - Lymphocyte: -0.0120
-   - MCV: 0.0268
-   - RDW: 0.3306
-   - Alkaline Phosphatase: 0.0019
-   - WBC: 0.0554
-   - Chronological Age: 0.0804
-   - Intercept: -19.9067
+#### Calculate Percentile
 
-3. **Linear Combination (LinComb)**:
-   - Sum of all weighted terms plus intercept
-   - LinComb = β₀ + β₁x₁ + β₂x₂ + ... + βₙxₙ
+```bash
+phenoage percentile --age 45 --phenoage 40
+```
 
-4. **Mortality Score**:
-   ```
-   MortScore = 1 - exp(-exp(LinComb) * (exp(g*t) - 1) / g)
-   ```
-   Where g = 0.0076927 and t = 120 months (10 years)
+#### Rank Interventions
 
-5. **Calculate PhenoAge**:
-   ```
-   PhenoAge = 141.50225 + ln(-0.00553 * ln(1 - MortScore)) / 0.090165
-   ```
+```bash
+phenoage rank --albumin 4.7 --creatinine 0.8 --glucose 75.9 --crp 0.1 \
+  --lymphocyte 57.5 --mcv 92.9 --rdw 13.3 --alp 15 --wbc 4.1 --age 30
+```
 
-6. **Calculate Estimated DNAm Age**:
-   ```
-   est_DNAm_Age = PhenoAge / (1 + 1.28047 * exp(0.0344329 * (-182.344 + PhenoAge)))
-   ```
+#### Simulate Interventions
 
-7. **Calculate Estimated D MScore**:
-   ```
-   est_D_MScore = 1 - exp(-0.000520363523 * exp(0.090165 * DNAm_Age))
-   ```
+```bash
+phenoage simulate --albumin 4.7 --creatinine 0.8 --glucose 75.9 --crp 0.1 \
+  --lymphocyte 57.5 --mcv 92.9 --rdw 13.3 --alp 15 --wbc 4.1 --age 30 \
+  --interventions "Regular Exercise,Omega-3 (1.5–3 g/day)"
+```
 
-### Intervention Ranking System
+#### Process TSV Files with Multiple Subjects
 
-The intervention ranking system works as follows:
+```bash
+# Process a file
+phenoage process example_biomarkers.tsv --output results.tsv
 
-1. For each intervention (25 total):
-   - Copy the person's original biomarker values
-   - Apply the intervention's specific effects to relevant biomarkers
-   - Recalculate PhenoAge with the modified biomarkers
-   - Calculate the delta (new PhenoAge - original PhenoAge)
+# Process with intervention rankings
+phenoage process example_biomarkers.tsv --output results_with_rankings.tsv --rank
 
-2. Sort interventions by their delta values (ascending)
-   - The most negative delta (biggest reduction in PhenoAge) ranks highest
+# Process with specific interventions
+phenoage process example_biomarkers.tsv --output intervention_results.tsv \
+  --apply "Regular Exercise,Omega-3 (1.5–3 g/day)"
+```
 
-3. Return the ranked list of interventions with their impact
+#### Interactive Mode
 
-### Combined Intervention Simulation
+```bash
+phenoage interactive
+```
 
-When simulating multiple interventions together:
+## Modular Architecture
 
-1. Start with the original biomarker values
-2. Apply each intervention sequentially in the order provided
-3. Allow each intervention to further modify biomarkers that have already been changed
-4. Calculate the final PhenoAge after all interventions have been applied
-5. Return the combined effect and all biomarker changes
+The PhenoAge Toolkit has a modular design to allow flexible usage:
 
-Note: The combined effect is not necessarily the sum of individual effects due to:
-- Overlapping mechanisms of action
-- Diminishing returns when a biomarker approaches optimal levels
-- Potential synergistic effects between interventions
+```
+phenoage_toolkit/
+├── api.py                  # High-level unified API
+├── biomarkers/             # Biomarker calculations
+│   └── calculator.py       # PhenoAge calculator
+├── percentile/             # Percentile calculations
+│   └── calculator.py       # Percentile calculator
+├── interventions/          # Intervention simulations
+│   ├── models.py           # Intervention effects
+│   └── manager.py          # Intervention ranking
+└── cli.py                  # Command line interface
+```
 
-## Intervention Details
+### Advanced Usage with Individual Modules
 
-The calculator includes 25 interventions based on clinical literature. Each intervention has specific effects on different biomarkers:
+```python
+# Direct access to biomarker calculations
+from phenoage_toolkit.biomarkers.calculator import AgeClockCalculator
+calculator = AgeClockCalculator()
+pheno_results = calculator.calculate_phenoage(biomarker_data)
+
+# Direct access to percentile calculations
+from phenoage_toolkit.percentile.calculator import calculate_percentile
+percentile = calculate_percentile(30, 25.5)  # chronological_age, phenotypic_age
+
+# Direct access to intervention models
+from phenoage_toolkit.interventions.models import InterventionModels
+updated_biomarkers = InterventionModels.apply_exercise(biomarker_data)
+```
+
+## Available Interventions
+
+The toolkit includes 25 interventions based on clinical literature:
 
 1. **Regular Exercise**:
    - Reduces CRP (more if elevated)
@@ -268,81 +209,113 @@ The calculator includes 25 interventions based on clinical literature. Each inte
    - Lowers glucose by 5-20 mg/dL
    - Can reduce WBC if elevated
 
-3. **Low Allergen / Anti-Inflammatory Diet**:
-   - Reduces CRP by 0.2-1.0 mg/L depending on baseline
-
-4. **Curcumin (500-1000 mg/day)**:
+3. **Curcumin (500-1000 mg/day)**:
    - Reduces CRP significantly (up to 3.7 mg/L if elevated)
 
-5. **Omega-3 (1.5-3 g/day)**:
+4. **Omega-3 (1.5-3 g/day)**:
    - Reduces CRP
    - Can reduce WBC if elevated
    - May increase albumin in inflammatory states
    - Can increase lymphocyte percentage
 
-... and 20 more interventions targeting various biomarkers
+5. **Low Allergen / Anti-Inflammatory Diet**:
+   - Reduces CRP by 0.2-1.0 mg/L depending on baseline
 
-## Example Results
+And 20 more interventions targeting various biomarkers.
 
-Two examples with different biomarker data:
+## Mathematical Details
 
-### Example 1: Healthy Biomarkers
-```
-Baseline PhenoAge: 16.25 years
-Estimated DNAm Age: 16.18 years
-Mortality Score: 0.0020
+### PhenoAge Calculation
 
-Top Interventions:
-1. Curcumin (500 mg/day): -0.12 years
-2. Omega-3 (1.5–3 g/day): -0.11 years
-3. Regular Exercise: -0.09 years
-```
+The PhenoAge algorithm follows a multi-step process:
 
-### Example 2: Suboptimal Biomarkers
-```
-Baseline PhenoAge: 51.74 years
-Estimated DNAm Age: 51.25 years
-Mortality Score: 0.0365
+1. **Unit Conversion**:
+   - Albumin: g/dL → g/L (multiply by 10)
+   - Creatinine: mg/dL → μmol/L (multiply by 88.4)
+   - Glucose: mg/dL → mmol/L (multiply by 0.0555)
+   - CRP: mg/L → ln(mg/dL) (multiply by 0.1 then take natural log)
+   
+2. **Apply Weights (from Levine et al. 2018)**
+3. **Calculate Linear Combination**
+4. **Calculate Mortality Score**
+5. **Calculate PhenoAge**
+6. **Calculate Estimated DNAm Age**
+7. **Calculate Estimated D MScore**
 
-Top Interventions:
-1. Weight Loss: -6.35 years
-2. Regular Exercise: -5.12 years
-3. Curcumin (500 mg/day): -4.78 years
-```
+### Percentile Calculation
 
-## Notes on Large Dataset Processing
+Percentile calculations use a normal distribution approximation:
 
-When processing large datasets:
-
-1. Ensure your TSV file has these column names (case-sensitive):
-   - `albumin`, `creatinine`, `glucose`, `crp`, `lymphocyte`
-   - `mcv`, `rdw`, `alkaline_phosphatase`, `wbc`, `chronological_age`
-
-2. If your column names are different, rename them before processing:
-   ```python
-   import pandas as pd
-   df = pd.read_csv("your_dataset.tsv", sep="\t")
-   column_mapping = {
-       "Age_at_recruitment": "chronological_age",
-       "White_blood_cell_count": "wbc",
-       # other mappings...
-   }
-   df_renamed = df.rename(columns=column_mapping)
-   df_renamed.to_csv("preprocessed_dataset.tsv", sep="\t", index=False)
+1. **Calculate Z-score**: 
    ```
+   z_score = (phenotypic_age - chronological_age) / 5.5
+   ```
+   
+2. **Convert to Percentile**: 
+   ```
+   percentile = (1 - norm.cdf(z_score)) * 100
+   ```
+   
+3. **Interpretation**: Higher percentiles indicate a younger biological age relative to chronological age peers.
 
-3. For very large files, consider processing in batches or on a machine with ample RAM.
+## Example Output
+
+### Basic Assessment
+
+```
+===== PHENOTYPIC AGE ASSESSMENT =====
+Chronological Age: 46.0 years
+Phenotypic Age: 40.2 years
+Percentile: 85.4
+Interpretation: Very good - younger biological age than 75% of people your age
+Age Difference: 5.8 years YOUNGER than chronological age
+
+===== INTERVENTION RECOMMENDATIONS =====
+Top 5 interventions ranked by potential impact:
+1. Curcumin (500 mg/day): 1.23 years younger
+2. Regular Exercise: 0.98 years younger
+3. Omega-3 (1.5–3 g/day): 0.87 years younger
+4. Low Allergen Diet: 0.56 years younger
+5. Mushrooms (Beta-Glucans): 0.42 years younger
+```
+
+### Intervention Simulation
+
+```
+Combined Intervention Simulation:
+Original PhenoAge: 40.2 years
+New PhenoAge: 37.5 years
+Improvement: 2.7 years
+
+Percentile Assessment:
+Original Percentile: 85.4
+New Percentile: 92.1
+Percentile Improvement: 6.7
+Original Interpretation: Very good - younger biological age than 75% of people your age
+New Interpretation: Excellent - younger biological age than 90% of people your age
+
+Interventions applied:
+  1. Regular Exercise
+  2. Curcumin (500 mg/day)
+  3. Omega-3 (1.5–3 g/day)
+
+Biomarker Changes:
+  crp: 0.07 → 0.01 (change: -0.06)
+  glucose: 77.00 → 74.00 (change: -3.00)
+  lymphocyte: 36.00 → 41.00 (change: +5.00)
+  albumin: 4.47 → 4.67 (change: +0.20)
+```
 
 ## Requirements
 
 - Python 3.6+
 - NumPy
 - Pandas
-- Math (standard library)
+- SciPy
 
 ## License
 
-[MIT License](LICENSE)
+See [LICENSE](LICENSE) for details. Copyright 2025 Puya Yazdi. All rights reserved.
 
 ## Acknowledgments
 
