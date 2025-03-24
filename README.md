@@ -18,7 +18,7 @@ The toolkit implements the validated PhenoAge algorithm (Levine et al.), convert
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/phenoage-toolkit.git
+git clone https://github.com/getovahit/phenoage-toolkit.git
 cd phenoage-toolkit
 
 # Install the package
