@@ -289,13 +289,20 @@ def main():
             # Calculate phenotypic age
             results = api.calculate_phenoage(biomarker_data)
             
-            # Print results in a formatted way
+            # Print complete results including all metrics
             print("\nPhenoAge Calculation Results:")
             print(f"  Linear Combination: {results['lin_comb']:.4f}")
             print(f"  Mortality Score: {results['mort_score']:.4f}")
             print(f"  PhenoAge: {results['pheno_age']:.4f} years")
             print(f"  Estimated DNAm Age: {results['est_dnam_age']:.4f} years")
             print(f"  Estimated D MScore: {results['est_d_mscore']:.4f}")
+            
+            # Also calculate and display percentile
+            percentile = api.calculate_percentile(args.age, results['pheno_age'])
+            interpretation = api.interpret_percentile(percentile)
+            print(f"\nPercentile Assessment:")
+            print(f"  Percentile: {percentile:.2f}")
+            print(f"  Interpretation: {interpretation}")
             
         except Exception as e:
             print(f"Error: {str(e)}")
@@ -391,10 +398,23 @@ def main():
             # Simulate combined interventions
             result = api.simulate_interventions(biomarker_data, interventions)
             
+            # Get detailed PhenoAge results for before and after
+            original_pheno_results = api.calculate_phenoage(biomarker_data)
+            updated_pheno_results = api.calculate_phenoage(result['updated_biomarkers'])
+            
             print("\nCombined Intervention Simulation:")
             print(f"Original PhenoAge: {result['original_pheno_age']:.2f} years")
             print(f"New PhenoAge: {result['new_pheno_age']:.2f} years")
             print(f"Improvement: {-result['delta']:.2f} years")
+            
+            print(f"\nDetailed Metrics:")
+            print(f"Original DNAm Age: {original_pheno_results['est_dnam_age']:.2f} years")
+            print(f"New DNAm Age: {updated_pheno_results['est_dnam_age']:.2f} years")
+            print(f"DNAm Age Improvement: {original_pheno_results['est_dnam_age'] - updated_pheno_results['est_dnam_age']:.2f} years")
+            print(f"Original Mortality Score: {original_pheno_results['mort_score']:.4f}")
+            print(f"New Mortality Score: {updated_pheno_results['mort_score']:.4f}")
+            print(f"Original D MScore: {original_pheno_results['est_d_mscore']:.4f}")
+            print(f"New D MScore: {updated_pheno_results['est_d_mscore']:.4f}")
             
             print(f"\nPercentile Assessment:")
             print(f"Original Percentile: {result['original_percentile']:.2f}")
@@ -437,10 +457,17 @@ def main():
             # Get complete assessment
             assessment = api.get_complete_assessment(biomarker_data)
             
-            # Print the assessment
+            # Get full phenoage calculation 
+            pheno_results = api.calculate_phenoage(biomarker_data)
+            
+            # Print the complete assessment with all metrics
             print("\n===== PHENOTYPIC AGE ASSESSMENT =====")
             print(f"Chronological Age: {assessment['chronological_age']:.1f} years")
             print(f"Phenotypic Age: {assessment['phenotypic_age']:.1f} years")
+            print(f"DNAm Age Estimate: {pheno_results['est_dnam_age']:.1f} years")
+            print(f"Mortality Score: {pheno_results['mort_score']:.4f}")
+            print(f"Linear Combination: {pheno_results['lin_comb']:.4f}")
+            print(f"D MScore: {pheno_results['est_d_mscore']:.4f}")
             print(f"Percentile: {assessment['percentile']:.1f}")
             print(f"Interpretation: {assessment['interpretation']}")
             print(f"Age Difference: {assessment['age_difference_text']}")
@@ -457,6 +484,14 @@ def main():
                 directory = os.path.dirname(args.output)
                 if directory and not os.path.exists(directory):
                     os.makedirs(directory)
+                
+                # Add detailed metrics to the assessment before saving
+                assessment['full_metrics'] = {
+                    'est_dnam_age': pheno_results['est_dnam_age'],
+                    'mort_score': pheno_results['mort_score'],
+                    'lin_comb': pheno_results['lin_comb'],
+                    'est_d_mscore': pheno_results['est_d_mscore']
+                }
                 
                 # Save the assessment as JSON
                 with open(args.output, 'w') as f:
@@ -498,13 +533,20 @@ def main():
                 "chronological_age": age
             }
             
-            # Get assessment
+            # Get full phenoage calculation first
+            pheno_results = api.calculate_phenoage(biomarker_data)
+            
+            # Then get the assessment which includes percentile
             assessment = api.get_bioage_assessment(biomarker_data)
             
-            # Display results
+            # Display complete results with all metrics
             print("\n===== PHENOTYPIC AGE ASSESSMENT =====")
             print(f"Chronological Age: {assessment['chronological_age']:.1f} years")
             print(f"Phenotypic Age: {assessment['phenotypic_age']:.1f} years")
+            print(f"DNAm Age Estimate: {pheno_results['est_dnam_age']:.1f} years")
+            print(f"Mortality Score: {pheno_results['mort_score']:.4f}")
+            print(f"Linear Combination: {pheno_results['lin_comb']:.4f}")
+            print(f"D MScore: {pheno_results['est_d_mscore']:.4f}")
             print(f"\nYour biological age is {assessment['age_difference_text']}")
             print(f"\nYou are in the {assessment['percentile']:.1f}th percentile")
             print(f"This means: {assessment['interpretation']}")
@@ -545,10 +587,22 @@ def main():
                         print(f"\nSimulating effects of {len(selected_interventions)} interventions...")
                         result = api.simulate_interventions(biomarker_data, selected_interventions)
                         
+                        # Get updated detailed PhenoAge results
+                        updated_pheno_results = api.calculate_phenoage(result['updated_biomarkers'])
+                        
                         print("\n===== INTERVENTION SIMULATION RESULTS =====")
                         print(f"Original PhenoAge: {result['original_pheno_age']:.2f} years")
                         print(f"New PhenoAge: {result['new_pheno_age']:.2f} years")
                         print(f"Improvement: {-result['delta']:.2f} years")
+                        
+                        print(f"\nDetailed Metrics:")
+                        print(f"Original DNAm Age: {pheno_results['est_dnam_age']:.2f} years")
+                        print(f"New DNAm Age: {updated_pheno_results['est_dnam_age']:.2f} years")
+                        print(f"DNAm Age Improvement: {pheno_results['est_dnam_age'] - updated_pheno_results['est_dnam_age']:.2f} years")
+                        print(f"Original Mortality Score: {pheno_results['mort_score']:.4f}")
+                        print(f"New Mortality Score: {updated_pheno_results['mort_score']:.4f}")
+                        print(f"Original D MScore: {pheno_results['est_d_mscore']:.4f}")
+                        print(f"New D MScore: {updated_pheno_results['est_d_mscore']:.4f}")
                         
                         print(f"\nPercentile Assessment:")
                         print(f"Original Percentile: {result['original_percentile']:.2f}")
