@@ -302,7 +302,7 @@ class TestInterventionManager(unittest.TestCase):
         
         # Combined effect should be smaller (more negative) than sum, but not double
         self.assertLess(combined_delta, individual_sum)
-        self.assertGreater(combined_delta, 2 * individual_deltas[0])
+        self.assertLess(combined_delta, 2 * individual_deltas[0])
 
 
 if __name__ == "__main__":

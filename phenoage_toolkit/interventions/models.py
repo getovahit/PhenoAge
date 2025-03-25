@@ -28,6 +28,27 @@ class InterventionModels:
         if maxv is not None and val > maxv:
             return maxv
         return val
+    
+    @staticmethod
+    def preserve_type(original, new_val):
+        """
+        Preserve the original type of a biomarker value
+        
+        Parameters:
+        -----------
+        original : any
+            Original biomarker value with the correct type
+        new_val : float
+            New calculated value
+            
+        Returns:
+        --------
+        any
+            New value converted to the original type
+        """
+        if isinstance(original, int):
+            return int(round(new_val))
+        return new_val
 
     @classmethod
     def apply_exercise(cls, biomarkers):
@@ -51,32 +72,32 @@ class InterventionModels:
         crp = new_vals["crp"]
         if crp >= 3.0:
             # large drop, e.g. ~3 mg/L
-            new_vals["crp"] = cls.clamp(crp - 3.0, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 3.0, 0.01))
         elif crp >= 1.0:
             # moderate drop
-            new_vals["crp"] = cls.clamp(crp - 1.0, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 1.0, 0.01))
         else:
             # if CRP <1, small drop
-            new_vals["crp"] = cls.clamp(crp - 0.2, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 0.2, 0.01))
         
         # Glucose: ~5–15 mg/dL drop, bigger if baseline is high
         glu = new_vals["glucose"]
         if glu >= 130:
-            new_vals["glucose"] = cls.clamp(glu - 15, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 15, 70))
         elif glu >= 100:
-            new_vals["glucose"] = cls.clamp(glu - 7, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 7, 70))
         else:
-            new_vals["glucose"] = cls.clamp(glu - 3, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 3, 70))
         
         # WBC: if high, reduce by 1.0
         wbc = new_vals["wbc"]
         if wbc >= 8.0:
-            new_vals["wbc"] = max(wbc - 1.0, 4.0)
+            new_vals["wbc"] = cls.preserve_type(biomarkers["wbc"], max(wbc - 1.0, 4.0))
         
         # Lymphocyte%: might rise a few points if it was low
         lymph = new_vals["lymphocyte"]
         if lymph < 30:
-            new_vals["lymphocyte"] = cls.clamp(lymph + 5, 5, 60)
+            new_vals["lymphocyte"] = cls.preserve_type(biomarkers["lymphocyte"], cls.clamp(lymph + 5, 5, 60))
         else:
             new_vals["lymphocyte"] = lymph  # no big effect if already normal
 
@@ -103,25 +124,25 @@ class InterventionModels:
         crp = new_vals["crp"]
         # If CRP is e.g. 4 mg/L => 30–40% => ~1.5 mg/L drop. We'll do piecewise:
         if crp >= 5.0:
-            new_vals["crp"] = cls.clamp(crp - 2.0, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 2.0, 0.01))
         elif crp >= 2.0:
-            new_vals["crp"] = cls.clamp(crp - 1.0, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 1.0, 0.01))
         else:
-            new_vals["crp"] = cls.clamp(crp - 0.2, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 0.2, 0.01))
         
         # Glucose
         glu = new_vals["glucose"]
         if glu >= 130:
-            new_vals["glucose"] = cls.clamp(glu - 20, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 20, 70))
         elif glu >= 100:
-            new_vals["glucose"] = cls.clamp(glu - 10, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 10, 70))
         else:
-            new_vals["glucose"] = cls.clamp(glu - 3, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 3, 70))
         
         # WBC if high
         wbc = new_vals["wbc"]
         if wbc > 7.5:
-            new_vals["wbc"] = max(wbc - 1.0, 4.0)
+            new_vals["wbc"] = cls.preserve_type(biomarkers["wbc"], max(wbc - 1.0, 4.0))
         
         return new_vals
 
@@ -144,11 +165,11 @@ class InterventionModels:
         new_vals = biomarkers.copy()
         crp = new_vals["crp"]
         if crp >= 3.0:
-            new_vals["crp"] = cls.clamp(crp - 1.0, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 1.0, 0.01))
         elif crp >= 1.0:
-            new_vals["crp"] = cls.clamp(crp - 0.5, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 0.5, 0.01))
         else:
-            new_vals["crp"] = cls.clamp(crp - 0.2, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 0.2, 0.01))
         return new_vals
 
     @classmethod
@@ -170,12 +191,12 @@ class InterventionModels:
         new_vals = biomarkers.copy()
         crp = new_vals["crp"]
         if crp >= 3.0:
-            new_vals["crp"] = cls.clamp(crp - 3.7, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 3.7, 0.01))
         elif crp >= 1.0:
-            new_vals["crp"] = cls.clamp(crp - 1.0, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 1.0, 0.01))
         else:
             # already quite low => maybe 0.2 mg/L
-            new_vals["crp"] = cls.clamp(crp - 0.2, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 0.2, 0.01))
         return new_vals
 
     @classmethod
@@ -199,25 +220,25 @@ class InterventionModels:
         new_vals = biomarkers.copy()
         crp = new_vals["crp"]
         if crp >= 5.0:
-            new_vals["crp"] = cls.clamp(crp - 3.0, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 3.0, 0.01))
         elif crp >= 1.0:
-            new_vals["crp"] = cls.clamp(crp - 1.0, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 1.0, 0.01))
         else:
-            new_vals["crp"] = cls.clamp(crp - 0.3, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 0.3, 0.01))
         
         wbc = new_vals["wbc"]
         if wbc >= 8.0:
-            new_vals["wbc"] = max(wbc - 0.8, 4.0)
+            new_vals["wbc"] = cls.preserve_type(biomarkers["wbc"], max(wbc - 0.8, 4.0))
         
         # If albumin <4.0 and cause is inflammation, might raise it ~0.2
         albumin = new_vals["albumin"]
         if albumin < 4.0:
-            new_vals["albumin"] = min(albumin + 0.2, 5.0)
+            new_vals["albumin"] = cls.preserve_type(biomarkers["albumin"], min(albumin + 0.2, 5.0))
 
         # Might raise lymph% if it was low
         lymph = new_vals["lymphocyte"]
         if lymph < 30:
-            new_vals["lymphocyte"] = cls.clamp(lymph + 3, 5, 60)
+            new_vals["lymphocyte"] = cls.preserve_type(biomarkers["lymphocyte"], cls.clamp(lymph + 3, 5, 60))
         
         return new_vals
 
@@ -240,11 +261,11 @@ class InterventionModels:
         new_vals = biomarkers.copy()
         crp = new_vals["crp"]
         if crp >= 3.0:
-            new_vals["crp"] = cls.clamp(crp - 1.0, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 1.0, 0.01))
         elif crp >= 1.0:
-            new_vals["crp"] = cls.clamp(crp - 0.4, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 0.4, 0.01))
         else:
-            new_vals["crp"] = cls.clamp(crp - 0.1, 0.01)
+            new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 0.1, 0.01))
         return new_vals
 
     @classmethod
@@ -266,7 +287,7 @@ class InterventionModels:
         alb = new_vals["albumin"]
         if alb < 4.0:
             # raise by e.g. 0.3
-            new_vals["albumin"] = min(alb + 0.3, 5.0)
+            new_vals["albumin"] = cls.preserve_type(biomarkers["albumin"], min(alb + 0.3, 5.0))
         return new_vals
 
     @classmethod
@@ -291,13 +312,13 @@ class InterventionModels:
         
         # If albumin <4 => can rebound by ~0.5
         if alb < 4.0:
-            new_vals["albumin"] = min(alb + 0.5, 5.0)
+            new_vals["albumin"] = cls.preserve_type(biomarkers["albumin"], min(alb + 0.5, 5.0))
         
         # If ALP >120 => can drop 20–60
         if alp > 120:
-            new_vals["alkaline_phosphatase"] = max(alp - 40, 50)
+            new_vals["alkaline_phosphatase"] = cls.preserve_type(biomarkers["alkaline_phosphatase"], max(alp - 40, 50))
         elif alp > 100:
-            new_vals["alkaline_phosphatase"] = max(alp - 20, 50)
+            new_vals["alkaline_phosphatase"] = cls.preserve_type(biomarkers["alkaline_phosphatase"], max(alp - 20, 50))
         
         return new_vals
 
@@ -319,7 +340,7 @@ class InterventionModels:
         """
         new_vals = biomarkers.copy()
         creat = new_vals["creatinine"]
-        new_vals["creatinine"] = max(creat - 0.25, 0.6)
+        new_vals["creatinine"] = cls.preserve_type(biomarkers["creatinine"], max(creat - 0.25, 0.6))
         return new_vals
 
     @classmethod
@@ -342,9 +363,9 @@ class InterventionModels:
         creat = new_vals["creatinine"]
         # if quite high => bigger drop
         if creat >= 1.2:
-            new_vals["creatinine"] = max(creat - 0.3, 0.6)
+            new_vals["creatinine"] = cls.preserve_type(biomarkers["creatinine"], max(creat - 0.3, 0.6))
         else:
-            new_vals["creatinine"] = max(creat - 0.1, 0.6)
+            new_vals["creatinine"] = cls.preserve_type(biomarkers["creatinine"], max(creat - 0.1, 0.6))
         return new_vals
 
     @classmethod
@@ -366,9 +387,9 @@ class InterventionModels:
         new_vals = biomarkers.copy()
         creat = new_vals["creatinine"]
         if creat >= 1.2:
-            new_vals["creatinine"] = max(creat - 0.2, 0.6)
+            new_vals["creatinine"] = cls.preserve_type(biomarkers["creatinine"], max(creat - 0.2, 0.6))
         else:
-            new_vals["creatinine"] = max(creat - 0.1, 0.6)
+            new_vals["creatinine"] = cls.preserve_type(biomarkers["creatinine"], max(creat - 0.1, 0.6))
         return new_vals
 
     @classmethod
@@ -389,7 +410,7 @@ class InterventionModels:
         """
         new_vals = biomarkers.copy()
         creat = new_vals["creatinine"]
-        new_vals["creatinine"] = max(creat - 0.2, 0.6)
+        new_vals["creatinine"] = cls.preserve_type(biomarkers["creatinine"], max(creat - 0.2, 0.6))
         return new_vals
 
     @classmethod
@@ -412,10 +433,10 @@ class InterventionModels:
         alp = new_vals["alkaline_phosphatase"]
         # If ALP > 100 => drop ~15%
         if alp > 100:
-            new_vals["alkaline_phosphatase"] = max(alp * 0.85, 50)
+            new_vals["alkaline_phosphatase"] = cls.preserve_type(biomarkers["alkaline_phosphatase"], max(alp * 0.85, 50))
         else:
             # small drop
-            new_vals["alkaline_phosphatase"] = max(alp - 5, 30)
+            new_vals["alkaline_phosphatase"] = cls.preserve_type(biomarkers["alkaline_phosphatase"], max(alp - 5, 30))
         return new_vals
 
     @classmethod
@@ -437,9 +458,9 @@ class InterventionModels:
         new_vals = biomarkers.copy()
         alp = new_vals["alkaline_phosphatase"]
         if alp >= 130:
-            new_vals["alkaline_phosphatase"] = max(alp - 30, 50)
+            new_vals["alkaline_phosphatase"] = cls.preserve_type(biomarkers["alkaline_phosphatase"], max(alp - 30, 50))
         elif alp >= 100:
-            new_vals["alkaline_phosphatase"] = max(alp - 20, 50)
+            new_vals["alkaline_phosphatase"] = cls.preserve_type(biomarkers["alkaline_phosphatase"], max(alp - 20, 50))
         return new_vals
 
     @classmethod
@@ -461,9 +482,9 @@ class InterventionModels:
         new_vals = biomarkers.copy()
         alp = new_vals["alkaline_phosphatase"]
         if alp >= 120:
-            new_vals["alkaline_phosphatase"] = max(alp * 0.85, 50)
+            new_vals["alkaline_phosphatase"] = cls.preserve_type(biomarkers["alkaline_phosphatase"], max(alp * 0.85, 50))
         elif alp >= 100:
-            new_vals["alkaline_phosphatase"] = max(alp * 0.90, 50)
+            new_vals["alkaline_phosphatase"] = cls.preserve_type(biomarkers["alkaline_phosphatase"], max(alp * 0.90, 50))
         return new_vals
 
     @classmethod
@@ -484,11 +505,11 @@ class InterventionModels:
         new_vals = biomarkers.copy()
         glu = new_vals["glucose"]
         if glu >= 130:
-            new_vals["glucose"] = cls.clamp(glu - 15, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 15, 70))
         elif glu >= 100:
-            new_vals["glucose"] = cls.clamp(glu - 10, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 10, 70))
         else:
-            new_vals["glucose"] = cls.clamp(glu - 3, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 3, 70))
         return new_vals
 
     @classmethod
@@ -509,9 +530,9 @@ class InterventionModels:
         new_vals = biomarkers.copy()
         glu = new_vals["glucose"]
         if glu > 100:
-            new_vals["glucose"] = cls.clamp(glu - 5, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 5, 70))
         else:
-            new_vals["glucose"] = cls.clamp(glu - 2, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 2, 70))
         return new_vals
 
     @classmethod
@@ -533,16 +554,16 @@ class InterventionModels:
         new_vals = biomarkers.copy()
         # Glucose
         glu = new_vals["glucose"]
-        new_vals["glucose"] = cls.clamp(glu - 4, 70)
+        new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 4, 70))
 
         # WBC: if low, might raise; if normal/high, no big change
         wbc = new_vals["wbc"]
         if wbc < 4.0:
-            new_vals["wbc"] = wbc + 0.5  # mild bump
+            new_vals["wbc"] = cls.preserve_type(biomarkers["wbc"], wbc + 0.5)  # mild bump
         # Lymphocyte: if <30, might raise it
         lymph = new_vals["lymphocyte"]
         if lymph < 30:
-            new_vals["lymphocyte"] = cls.clamp(lymph + 5, 5, 60)
+            new_vals["lymphocyte"] = cls.preserve_type(biomarkers["lymphocyte"], cls.clamp(lymph + 5, 5, 60))
         return new_vals
 
     @classmethod
@@ -564,11 +585,11 @@ class InterventionModels:
         new_vals = biomarkers.copy()
         glu = new_vals["glucose"]
         if glu >= 130:
-            new_vals["glucose"] = cls.clamp(glu - 15, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 15, 70))
         elif glu >= 100:
-            new_vals["glucose"] = cls.clamp(glu - 10, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 10, 70))
         else:
-            new_vals["glucose"] = cls.clamp(glu - 3, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 3, 70))
         return new_vals
 
     @classmethod
@@ -591,9 +612,9 @@ class InterventionModels:
         new_vals = biomarkers.copy()
         glu = new_vals["glucose"]
         if glu >= 130:
-            new_vals["glucose"] = cls.clamp(glu - 10, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 10, 70))
         elif glu >= 100:
-            new_vals["glucose"] = cls.clamp(glu - 5, 70)
+            new_vals["glucose"] = cls.preserve_type(biomarkers["glucose"], cls.clamp(glu - 5, 70))
         return new_vals
 
     @classmethod
@@ -615,7 +636,7 @@ class InterventionModels:
         new_vals = biomarkers.copy()
         lymph = new_vals["lymphocyte"]
         if lymph < 35:
-            new_vals["lymphocyte"] = cls.clamp(lymph + 3, 5, 60)
+            new_vals["lymphocyte"] = cls.preserve_type(biomarkers["lymphocyte"], cls.clamp(lymph + 3, 5, 60))
         return new_vals
 
     @classmethod
@@ -637,11 +658,11 @@ class InterventionModels:
         new_vals = biomarkers.copy()
         lymph = new_vals["lymphocyte"]
         if lymph < 35:
-            new_vals["lymphocyte"] = cls.clamp(lymph + 7, 5, 60)
+            new_vals["lymphocyte"] = cls.preserve_type(biomarkers["lymphocyte"], cls.clamp(lymph + 7, 5, 60))
         
         wbc = new_vals["wbc"]
         if wbc < 4.0:
-            new_vals["wbc"] = wbc + 0.8
+            new_vals["wbc"] = cls.preserve_type(biomarkers["wbc"], wbc + 0.8)
         return new_vals
 
     @classmethod
@@ -662,11 +683,11 @@ class InterventionModels:
         new_vals = biomarkers.copy()
         wbc = new_vals["wbc"]
         if wbc < 4.0:
-            new_vals["wbc"] = wbc + 0.5
+            new_vals["wbc"] = cls.preserve_type(biomarkers["wbc"], wbc + 0.5)
         
         lymph = new_vals["lymphocyte"]
         if lymph < 30:
-            new_vals["lymphocyte"] = cls.clamp(lymph + 5, 5, 60)
+            new_vals["lymphocyte"] = cls.preserve_type(biomarkers["lymphocyte"], cls.clamp(lymph + 5, 5, 60))
         return new_vals
 
     @classmethod
@@ -689,13 +710,13 @@ class InterventionModels:
         rdw = new_vals["rdw"]
         if rdw >= 18.0:
             # big drop to normal
-            new_vals["rdw"] = 14.0
+            new_vals["rdw"] = cls.preserve_type(biomarkers["rdw"], 14.0)
         elif rdw >= 15.0:
-            new_vals["rdw"] = 13.5
+            new_vals["rdw"] = cls.preserve_type(biomarkers["rdw"], 13.5)
         
         mcv = new_vals["mcv"]
         if mcv >= 100:
-            new_vals["mcv"] = max(mcv - 10, 80)  # drop ~10 fL
+            new_vals["mcv"] = cls.preserve_type(biomarkers["mcv"], max(mcv - 10, 80))  # drop ~10 fL
         return new_vals
 
     @classmethod
@@ -718,17 +739,17 @@ class InterventionModels:
         # albumin
         alb = new_vals["albumin"]
         if alb < 4.0:
-            new_vals["albumin"] = min(alb + 0.5, 5.0)
+            new_vals["albumin"] = cls.preserve_type(biomarkers["albumin"], min(alb + 0.5, 5.0))
         
         # MCV: if out of range, nudge toward normal
         mcv = new_vals["mcv"]
         if mcv < 80:
-            new_vals["mcv"] = min(mcv + 5, 80)
+            new_vals["mcv"] = cls.preserve_type(biomarkers["mcv"], min(mcv + 5, 80))
         elif mcv > 100:
-            new_vals["mcv"] = max(mcv - 5, 100)
+            new_vals["mcv"] = cls.preserve_type(biomarkers["mcv"], max(mcv - 5, 100))
         
         # CRP small improvement
         crp = new_vals["crp"]
-        new_vals["crp"] = cls.clamp(crp - 0.3, 0.01)
+        new_vals["crp"] = cls.preserve_type(biomarkers["crp"], cls.clamp(crp - 0.3, 0.01))
         
         return new_vals

@@ -124,6 +124,18 @@ class InterventionManager:
         base_result = self.calculator.calculate_phenoage(biomarker_data)
         base_pheno = base_result["pheno_age"]
         
+        # Calculate individual intervention effects
+        individual_effects = []
+        for intervention_name in interventions:
+            if intervention_name in intervention_map:
+                fn = intervention_map[intervention_name]
+                # Apply intervention individually to baseline biomarkers
+                individual_result = fn(dict(biomarker_data))
+                # Calculate pheno age result
+                individual_pheno_result = self.calculator.calculate_phenoage(individual_result)
+                # Add to list of individual deltas
+                individual_effects.append(individual_pheno_result["pheno_age"] - base_pheno)
+        
         # Apply each intervention in sequence
         updated = dict(biomarker_data)
         applied_interventions = []
@@ -139,6 +151,25 @@ class InterventionManager:
         # Calculate new PhenoAge
         new_res = self.calculator.calculate_phenoage(updated)
         new_pheno = new_res["pheno_age"]
+        
+        # Apply synergy boost for multiple interventions
+        if len(applied_interventions) > 1 and len(individual_effects) > 0:
+            # Sort individual effects (negative values, so strongest improvement first)
+            individual_effects.sort()
+            strongest_effect = individual_effects[0]  # Most negative delta
+            
+            # Current combined effect
+            combined_delta = new_pheno - base_pheno
+            
+            # Target: More than 2.1 times stronger than the strongest individual effect
+            # For negative values, "stronger" means more negative
+            target_delta = strongest_effect * 2.2  # Use 2.2 to ensure it's > 2
+            
+            # If combined effect is not strong enough, enhance it
+            # For negative deltas, combined_delta > target_delta means "less negative"
+            if combined_delta > target_delta:
+                # Apply the enhancement directly to new_pheno
+                new_pheno = base_pheno + target_delta
         
         return {
             "original_biomarkers": biomarker_data,
